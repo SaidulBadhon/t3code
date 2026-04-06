@@ -33,6 +33,7 @@ class SimpleWsRpcClient {
       this.dispose();
       this.disposed = false;
       const url = buildWsUrl(config);
+      let settled = false;
 
       try {
         this.ws = new WebSocket(url);
@@ -41,12 +42,24 @@ class SimpleWsRpcClient {
         return;
       }
 
-      this.ws.addEventListener("open", () => resolve(), { once: true });
+      this.ws.addEventListener(
+        "open",
+        () => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        },
+        { once: true },
+      );
 
       this.ws.addEventListener(
         "error",
         () => {
-          reject(new Error("WebSocket connection failed"));
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WebSocket connection to ${url} failed`));
+          }
         },
         { once: true },
       );
@@ -57,14 +70,19 @@ class SimpleWsRpcClient {
 
       this.ws.addEventListener(
         "close",
-        () => {
+        (event) => {
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WebSocket closed: code=${event.code} reason=${event.reason}`));
+            return;
+          }
           for (const [, req] of this.pending) {
             req.reject(new Error("Connection closed"));
           }
           this.pending.clear();
           this.streams.clear();
           if (!this.disposed) {
-            useConnectionStore.getState().setStatus("disconnected", "Connection lost");
+            useConnectionStore.getState().setStatus("error", "Connection lost");
           }
         },
         { once: true },
@@ -177,12 +195,15 @@ const client = new SimpleWsRpcClient();
 
 export async function connectToServer(config: ConnectionConfig): Promise<void> {
   const store = useConnectionStore.getState();
+  store.setConfig(config);
   store.setStatus("connecting");
   try {
     await client.connect(config);
     store.setStatus("connected");
   } catch (err) {
-    store.setStatus("error", err instanceof Error ? err.message : String(err));
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[T3 Mobile] Connection failed:", msg);
+    store.setStatus("error", msg);
   }
 }
 
