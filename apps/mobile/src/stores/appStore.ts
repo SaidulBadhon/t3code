@@ -1,16 +1,21 @@
-import type {
-  OrchestrationEvent,
-  OrchestrationReadModel,
-  OrchestrationThread,
-  ModelSelection,
-  ProjectId,
-  ThreadId,
-  RuntimeMode,
-  ProviderInteractionMode,
-  ProviderKind,
-  OrchestrationSessionStatus,
-} from "@t3tools/contracts";
 import { create } from "zustand";
+
+export type ProviderKind = "codex" | "claudeAgent";
+export type RuntimeMode = "approval-required" | "full-access";
+export type InteractionMode = "default" | "plan";
+export type SessionStatus =
+  | "idle"
+  | "starting"
+  | "running"
+  | "ready"
+  | "interrupted"
+  | "stopped"
+  | "error";
+
+export interface ModelSelection {
+  provider: ProviderKind;
+  model: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -23,18 +28,18 @@ export interface ChatMessage {
 
 export interface ThreadSession {
   provider: ProviderKind | null;
-  status: OrchestrationSessionStatus;
+  status: SessionStatus;
   activeTurnId?: string;
   lastError?: string;
 }
 
 export interface Thread {
-  id: ThreadId;
-  projectId: ProjectId;
+  id: string;
+  projectId: string;
   title: string;
   modelSelection: ModelSelection;
   runtimeMode: RuntimeMode;
-  interactionMode: ProviderInteractionMode;
+  interactionMode: InteractionMode;
   session: ThreadSession | null;
   messages: ChatMessage[];
   error: string | null;
@@ -46,10 +51,21 @@ export interface Thread {
 }
 
 export interface Project {
-  id: ProjectId;
+  id: string;
   name: string;
   cwd: string;
   defaultModelSelection: ModelSelection | null;
+}
+
+interface OrchestrationEvent {
+  type: string;
+  occurredAt: string;
+  payload: any;
+}
+
+interface OrchestrationReadModel {
+  projects: any[];
+  threads: any[];
 }
 
 interface AppState {
@@ -61,23 +77,23 @@ interface AppState {
   reset: () => void;
 }
 
-function mapThread(thread: OrchestrationThread): Thread {
+function mapThread(raw: any): Thread {
   return {
-    id: thread.id,
-    projectId: thread.projectId,
-    title: thread.title,
-    modelSelection: thread.modelSelection,
-    runtimeMode: thread.runtimeMode,
-    interactionMode: thread.interactionMode,
-    session: thread.session
+    id: raw.id,
+    projectId: raw.projectId,
+    title: raw.title,
+    modelSelection: raw.modelSelection,
+    runtimeMode: raw.runtimeMode ?? "full-access",
+    interactionMode: raw.interactionMode ?? "default",
+    session: raw.session
       ? {
-          provider: thread.session.providerName as ProviderKind | null,
-          status: thread.session.status,
-          activeTurnId: thread.session.activeTurnId ?? undefined,
-          lastError: thread.session.lastError ?? undefined,
+          provider: raw.session.providerName ?? null,
+          status: raw.session.status,
+          activeTurnId: raw.session.activeTurnId ?? undefined,
+          lastError: raw.session.lastError ?? undefined,
         }
       : null,
-    messages: thread.messages.map((m) => ({
+    messages: (raw.messages ?? []).map((m: any) => ({
       id: m.id,
       role: m.role,
       text: m.text,
@@ -86,11 +102,11 @@ function mapThread(thread: OrchestrationThread): Thread {
       streaming: m.streaming ?? false,
     })),
     error: null,
-    createdAt: thread.createdAt,
-    archivedAt: thread.archivedAt ?? null,
-    updatedAt: thread.updatedAt,
-    branch: thread.branch ?? null,
-    worktreePath: thread.worktreePath ?? null,
+    createdAt: raw.createdAt,
+    archivedAt: raw.archivedAt ?? null,
+    updatedAt: raw.updatedAt,
+    branch: raw.branch ?? null,
+    worktreePath: raw.worktreePath ?? null,
   };
 }
 
@@ -109,7 +125,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   syncSnapshot: (readModel) =>
     set({
-      projects: readModel.projects.map((p) => ({
+      projects: readModel.projects.map((p: any) => ({
         id: p.id,
         name: p.title,
         cwd: p.workspaceRoot,
@@ -121,70 +137,71 @@ export const useAppStore = create<AppState>((set) => ({
 
   applyEvent: (event) =>
     set((state) => {
+      const p = event.payload;
       switch (event.type) {
         case "project.created":
           return {
             projects: [
               ...state.projects,
               {
-                id: event.payload.projectId,
-                name: event.payload.title,
-                cwd: event.payload.workspaceRoot,
-                defaultModelSelection: event.payload.defaultModelSelection ?? null,
+                id: p.projectId,
+                name: p.title,
+                cwd: p.workspaceRoot,
+                defaultModelSelection: p.defaultModelSelection ?? null,
               },
             ],
           };
 
         case "project.deleted":
           return {
-            projects: state.projects.filter((p) => p.id !== event.payload.projectId),
+            projects: state.projects.filter((proj) => proj.id !== p.projectId),
           };
 
-        case "project.meta-updated": {
-          const { projectId, title, workspaceRoot, defaultModelSelection } = event.payload;
+        case "project.meta-updated":
           return {
-            projects: state.projects.map((p) => {
-              if (p.id !== projectId) return p;
+            projects: state.projects.map((proj) => {
+              if (proj.id !== p.projectId) return proj;
               return {
-                ...p,
-                ...(title !== undefined ? { name: title } : {}),
-                ...(workspaceRoot !== undefined ? { cwd: workspaceRoot } : {}),
-                ...(defaultModelSelection !== undefined ? { defaultModelSelection } : {}),
+                ...proj,
+                ...(p.title !== undefined ? { name: p.title } : {}),
+                ...(p.workspaceRoot !== undefined ? { cwd: p.workspaceRoot } : {}),
+                ...(p.defaultModelSelection !== undefined
+                  ? { defaultModelSelection: p.defaultModelSelection }
+                  : {}),
               };
             }),
           };
-        }
 
         case "thread.created":
           return {
             threads: [
               ...state.threads,
               {
-                id: event.payload.threadId,
-                projectId: event.payload.projectId,
-                title: event.payload.title,
-                modelSelection: event.payload.modelSelection,
-                runtimeMode: event.payload.runtimeMode,
-                interactionMode: event.payload.interactionMode,
+                id: p.threadId,
+                projectId: p.projectId,
+                title: p.title,
+                modelSelection: p.modelSelection,
+                runtimeMode: p.runtimeMode ?? "full-access",
+                interactionMode: p.interactionMode ?? "default",
                 session: null,
                 messages: [],
                 error: null,
-                createdAt: event.payload.createdAt,
+                createdAt: p.createdAt ?? event.occurredAt,
                 archivedAt: null,
-                branch: event.payload.branch ?? null,
-                worktreePath: event.payload.worktreePath ?? null,
+                branch: p.branch ?? null,
+                worktreePath: p.worktreePath ?? null,
               },
             ],
           };
 
         case "thread.deleted":
           return {
-            threads: state.threads.filter((t) => t.id !== event.payload.threadId),
+            threads: state.threads.filter((t) => t.id !== p.threadId),
           };
 
         case "thread.archived":
           return {
-            threads: updateThread(state.threads, event.payload.threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
               archivedAt: event.occurredAt,
             })),
@@ -192,28 +209,26 @@ export const useAppStore = create<AppState>((set) => ({
 
         case "thread.unarchived":
           return {
-            threads: updateThread(state.threads, event.payload.threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
               archivedAt: null,
             })),
           };
 
-        case "thread.meta-updated": {
-          const { threadId, title, modelSelection, branch, worktreePath } = event.payload;
+        case "thread.meta-updated":
           return {
-            threads: updateThread(state.threads, threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
-              ...(title !== undefined ? { title } : {}),
-              ...(modelSelection !== undefined ? { modelSelection } : {}),
-              ...(branch !== undefined ? { branch } : {}),
-              ...(worktreePath !== undefined ? { worktreePath } : {}),
-              updatedAt: event.payload.updatedAt,
+              ...(p.title !== undefined ? { title: p.title } : {}),
+              ...(p.modelSelection !== undefined ? { modelSelection: p.modelSelection } : {}),
+              ...(p.branch !== undefined ? { branch: p.branch } : {}),
+              ...(p.worktreePath !== undefined ? { worktreePath: p.worktreePath } : {}),
+              updatedAt: p.updatedAt,
             })),
           };
-        }
 
         case "thread.message-sent": {
-          const { threadId, messageId, role, text, turnId, streaming, createdAt } = event.payload;
+          const { threadId, messageId, role, text, turnId, streaming, createdAt } = p;
           return {
             threads: updateThread(state.threads, threadId, (t) => {
               const existing = t.messages.find((m) => m.id === messageId);
@@ -251,30 +266,30 @@ export const useAppStore = create<AppState>((set) => ({
 
         case "thread.session-set":
           return {
-            threads: updateThread(state.threads, event.payload.threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
               session: {
-                provider: event.payload.session.providerName as ProviderKind | null,
-                status: event.payload.session.status,
-                activeTurnId: event.payload.session.activeTurnId ?? undefined,
-                lastError: event.payload.session.lastError ?? undefined,
+                provider: p.session?.providerName ?? null,
+                status: p.session?.status ?? "idle",
+                activeTurnId: p.session?.activeTurnId ?? undefined,
+                lastError: p.session?.lastError ?? undefined,
               },
             })),
           };
 
         case "thread.runtime-mode-set":
           return {
-            threads: updateThread(state.threads, event.payload.threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
-              runtimeMode: event.payload.runtimeMode,
+              runtimeMode: p.runtimeMode,
             })),
           };
 
         case "thread.interaction-mode-set":
           return {
-            threads: updateThread(state.threads, event.payload.threadId, (t) => ({
+            threads: updateThread(state.threads, p.threadId, (t) => ({
               ...t,
-              interactionMode: event.payload.interactionMode,
+              interactionMode: p.interactionMode,
             })),
           };
 

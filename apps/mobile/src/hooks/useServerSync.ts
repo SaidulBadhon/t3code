@@ -33,7 +33,7 @@ export function useServerSync() {
         setConfig(serverConfig);
         setSettings(settings);
 
-        unsubRef.current = rpc.orchestration.onDomainEvent((event) => {
+        unsubRef.current = rpc.orchestration.onDomainEvent((event: any) => {
           if (!cancelled) applyEvent(event);
         });
       } catch (err) {

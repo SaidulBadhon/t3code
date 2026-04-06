@@ -17,4 +17,13 @@ config.resolver.disableHierarchicalLookup = false;
 
 config.resolver.sourceExts = [...(config.resolver.sourceExts ?? []), "mjs", "cjs"];
 
+// Transform import.meta for web compatibility
+config.transformer = config.transformer || {};
+config.transformer.getTransformOptions = async () => ({
+  transform: {
+    experimentalImportSupport: false,
+    inlineRequires: true,
+  },
+});
+
 module.exports = config;

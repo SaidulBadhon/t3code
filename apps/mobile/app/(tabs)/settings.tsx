@@ -52,7 +52,7 @@ export default function SettingsScreen() {
       useTls,
     };
     setConfig(config);
-    connectToServer(config);
+    void connectToServer(config);
   }, [host, port, authToken, useTls, setConfig]);
 
   const handleDisconnect = useCallback(() => {

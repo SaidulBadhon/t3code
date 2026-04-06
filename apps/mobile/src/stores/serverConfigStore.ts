@@ -1,22 +1,45 @@
-import type { ServerConfig, ServerSettings, ServerProvider } from "@t3tools/contracts";
 import { create } from "zustand";
 
+export interface ServerProviderModel {
+  slug: string;
+  name: string;
+}
+
+export interface ServerProvider {
+  provider: "codex" | "claudeAgent";
+  enabled: boolean;
+  installed: boolean;
+  status: string;
+  auth: { status: string };
+  models: ServerProviderModel[];
+}
+
+export interface ServerSettings {
+  enableAssistantStreaming: boolean;
+  defaultThreadEnvMode: string;
+}
+
 interface ServerConfigState {
-  config: ServerConfig | null;
   settings: ServerSettings | null;
-  providers: readonly ServerProvider[];
-  setConfig: (config: ServerConfig) => void;
-  setSettings: (settings: ServerSettings) => void;
+  providers: ServerProvider[];
+  setConfig: (config: any) => void;
+  setSettings: (settings: any) => void;
 }
 
 export const useServerConfigStore = create<ServerConfigState>((set) => ({
-  config: null,
   settings: null,
   providers: [],
-  setConfig: (config) =>
+  setConfig: (config: any) =>
     set({
-      config,
-      providers: config.providers,
+      providers: config?.providers ?? [],
     }),
-  setSettings: (settings) => set({ settings }),
+  setSettings: (settings: any) =>
+    set({
+      settings: settings
+        ? {
+            enableAssistantStreaming: settings.enableAssistantStreaming ?? false,
+            defaultThreadEnvMode: settings.defaultThreadEnvMode ?? "local",
+          }
+        : null,
+    }),
 }));
