@@ -51,3 +51,28 @@ Docs:
 - Codex-Monitor (Tauri, feature-complete, strong reference implementation): https://github.com/Dimillian/CodexMonitor
 
 Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.
+
+## Cursor Cloud specific instructions
+
+### Runtime prerequisites
+
+- **Node.js 24.13.1** and **Bun 1.3.9** (pinned in `.mise.toml`). The VM update script installs both via nvm and the Bun installer.
+- No external databases — persistence is embedded SQLite via `node:sqlite` (experimental warning is expected and harmless).
+- No Docker or docker-compose required.
+
+### Running services in dev
+
+- `T3CODE_NO_BROWSER=1 bun dev` starts the full dev stack (contracts watch-build + server on `:3773` + Vite web on `:5733`). The `--no-browser` flag prevents attempting to open a browser.
+- The dev runner uses turbo TUI. To run server or web independently: `bun dev:server` / `bun dev:web`.
+- Dev data is stored at `~/.t3/dev/` (separate from production `~/.t3/userdata/`).
+
+### Quality gates (see `package.json` scripts)
+
+- `bun lint` — oxlint
+- `bun fmt` — oxfmt (use `bun fmt --check` for CI-style check)
+- `bun typecheck` — tsc via turbo across all packages
+- `bun run test` — Vitest via turbo (NEVER use `bun test` directly)
+
+### Known test flakes
+
+- `apps/server` git integration tests (`GitCore.test.ts`) have 2–3 tests that may fail with timeouts or assertion errors related to remote URL deduplication. These are pre-existing and not caused by environment setup.
